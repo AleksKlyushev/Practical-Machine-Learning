@@ -1,0 +1,124 @@
+---
+title: "Practical Machine Learning CP"
+author: "Aleksandr Kliushev"
+date: "24.09.2015"
+output: html_document
+---
+The goal of this project is to predict the manner in which people did the Weight Lifting  exercise. For make this we have the information from 6 sportmens, whom using devices such as Jawbone Up, Nike FuelBand, and Fitbit.
+
+Lets load training and test data and nessery library.
+
+```{r,cache=TRUE,warning=FALSE}
+library(dplyr)
+library(caret)
+library(ggplot2)
+library(pROC)
+
+set.seed(31415)
+setwd("C:/Users/123/Documents/R/coursera/Practical Machine Learning/CP")
+df <- tbl_df(read.csv("pml-training.csv",na.strings = c("","NA")))
+df_test <- tbl_df(read.csv("pml-testing.csv",na.strings = c("","NA")))
+```
+
+In the first step, lets filter variables with NA share > 0.8.
+
+```{r, cache=TRUE}
+NA_list <- apply(df,c(1,2),is.na) %>%
+  apply(2,sum) %>%
+  as.data.frame()%>%
+  tbl_df()
+NA_list$Var <- colnames(df)
+colnames(NA_list) <- c("NA_count","Var") 
+dim_2 <- dim(df)[1]
+NA_not_null <- NA_list[(NA_list$NA_count/dim_2)<0.8,2]
+df<-df[,NA_not_null$Var]
+```
+
+Lets plot barplot of classe.                                                                                                                                                                                             
+```{r,eval=FALSE}
+ggplot(data = df,aes(x=classe))+geom_bar(data = df,aes(x=classe))
+```
+
+We can see, that each "classe" has equval count.
+
+For the next step lets convert cvtd_timestamp to date variable. After that lets make some helping filds, like weekdays, hour and ets.
+
+```{r,eval=FALSE}
+include_date <- function(df){
+df$date_time <- strptime(x = df$cvtd_timestamp,format = "%d/%m/%Y %H:%M")
+#Make helping field
+df$weekday <- as.factor(weekdays.POSIXt(df$date_time))
+df$month <- as.factor(format.Date(df$date_time,"%m"))
+df$day <- as.factor(format.Date(df$date_time,"%d"))
+df$hour <- as.factor(format.Date(df$date_time,"%H"))
+df <- select(df,-which(colnames(df)=="date_time"))
+return(df)
+}
+df <- include_date(df)
+```
+
+Now, lets slice data to train and test.
+
+```{r,eval=FALSE}
+train <- createDataPartition(df$classe,p=0.7,list = F)
+data_train <- tbl_df(df[train,])
+data_test <- df[-train,]
+```
+
+Run the learning random forest model with cross validation parameters.
+
+```{r,eval=FALSE}
+contr <- trainControl(method = "cv",number = 10,verboseIter=TRUE)
+rf <- train(data = data_train[,c(-1,-3:-5)],
+            x = data_train[,c(-1,-3:-5,-60)],
+            y = data_train$classe,
+            form = clasee ~ .,
+            method = "rf", ntree = 300,
+            trControl = contr)
+ans_t <- predict(rf,newdata = data_test[,c(-1,-3:-5,-60)])
+
+ac <- sum(ans_t == data_test$classe)/dim(data_test)[1]
+```
+We can see, that accurancy of our random forest model is 99% on the test set.    
+ 
+Lets processing the test file to the train data format.
+
+```{r,eval=FALSE}
+NA_list <- apply(df_test,c(1,2),is.na) %>%
+  apply(2,sum) %>%
+  as.data.frame()%>%
+  tbl_df()
+NA_list$Var <- colnames(df_test)
+colnames(NA_list) <- c("NA_count","Var") 
+dim_2 <- dim(df_test)[1]
+NA_not_null <- NA_list[(NA_list$NA_count/dim_2)<0.8,2]
+df_test<-df_test[,NA_not_null$Var]
+
+df_test <- tbl_df(include_date(df_test))
+levels(df_test$user_name) <- levels(data_train$user_name)
+levels(df_test$new_window) <- levels(data_train$new_window)
+levels(df_test$weekday) <- levels(data_train$weekday)
+levels(df_test$month) <- levels(data_train$month)
+levels(df_test$day) <- levels(data_train$day)
+levels(df_test$hour) <- levels(data_train$hour)
+```
+
+And lets predict the answer and write it to file. 
+```{r,eval=FALSE}
+ans <- predict(rf,newdata = df_test[,c(-1,-3:-5,-60)])
+```
+
+```{r,eval=FALSE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(ans)
+```
+
+That's all!
+Thank you!
+
